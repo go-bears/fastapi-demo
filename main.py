@@ -30,20 +30,17 @@
 
 import time
 
-from typing import List
-
-
+import torch
 import uvicorn
 
-from logging_config import logger
+from typing import List
 
 from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
-import torch
+
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-
-
+from logging_config import logger
 from langcodes import Languages 
 from model import load_models
 
@@ -135,7 +132,8 @@ async def translate_text(request: TranslationRequest):
     model = MODEL
     logger.info(f"received: {request}")
     try: 
-        model.to(torch.cuda.current_device())
+        model = model.to(torch.cuda.current_device())
+        logger.info(f"model is on cuda device: {model.device}")
     except:
         logger.error(f"Error moving model to cuda device. model device is: {model.device}")
     try:
@@ -152,6 +150,7 @@ async def translate_text(request: TranslationRequest):
         logger.info("generating translation")
         logger.info(f"model device: {model.device}")
         start_time = time.time()
+        
         gen_tokens = model.generate(
         input_ids, 
             max_new_tokens=300, 
@@ -162,10 +161,11 @@ async def translate_text(request: TranslationRequest):
         gen_text = str(tokenizer.decode(gen_tokens[0]))
         logger.info(f"generated text: {gen_text}")
         end_time = time.time()
+        
         logger.info(f"time taken: {str(end_time - start_time)}")
-        logger.info(f"outputs: {str(gen_text)}")
-
         logger.info(f"Successfully processed text.")
+
+
         return TranslationResponse(
             role="assistant",
             content=gen_text,
