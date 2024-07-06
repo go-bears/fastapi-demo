@@ -1,14 +1,58 @@
-import logging
-import os
-from typing import Optional
+"""
+    Fimio Demo of Translation API with AYA-35B model
 
-from fastapi import FastAPI, HTTPException
+    This demo provides and REST API for translating text using the AYA-35B model.
+
+    How to test:
+    run server with main.py
+    `python main.py`
+    
+    1) check model is running
+    - open browser to http://localhost:8080/ which should display sample translation
+    
+    2) test new translations with curl
+    - curl -X POST "http://localhost:8080/translate"  -H "Content-Type: application/json"  -d '{ "role": "user", "content": "how do you say Hello World! in French and Japanese and Turkish" }'
+
+    example response may look like:
+    {"role":"assistant","content":"<BOS_TOKEN><|START_OF_TURN_TOKEN|><|USER_TOKEN|>how do you say Hello World! in French and Japanese and Turkish<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>Here are the translations of \"Hello World!\" in French, Japanese, and Turkish:\n\n- French: \"Bonjour le Monde !\"\n- Japanese: \"世界こんにちは\" (sekaikon'nichiwa)\n- Turkish: \"Merhaba Dünya!\"<|END_OF_TURN_TOKEN|>","time_to_generate":117.22399687767029,"num_generated_tokens":79,"num_input_tokens":19}
+    
+    3) test /translate endpoint with swagger UI
+    - open browser to http://localhost:8080/docs
+    - update the request body under 'content'with new text to translate
+    press `execute`
+
+    Currently known caveats 7/6/2024 (MF):
+    - model is not yet optimized for multi-language translations
+    - model is not yet optimized for long outputs
+    - model not yet run on GPU
+
+"""
+
+import time
+
+from typing import List
+
+
+import uvicorn
+
+from logging_config import logger
+
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, AutoModelForCausalLM
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
+
+from langcodes import Languages 
+from model import load_models
+
+from logging_config import setup_logging
+
+setup_logging()
+
+TOKENIZER, MODEL = load_models()
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -16,81 +60,123 @@ app = FastAPI(
     description="API for translating text using the AYA-35B model",
 )
 
-# Load AYA-35B model and tokenizer
-MODEL_NAME = "CohereForAI/aya-23-35B"
+languages = Languages()
 
-try:
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-
-    logger.info(f"Successfully loaded {MODEL_NAME} model and tokenizer")
-except Exception as e:
-    logger.error(f"Failed to load {MODEL_NAME} model and tokenizer: {str(e)}")
-    raise
-
-
-# Pydantic model for translation request
+# Pydantic models
 class TranslationRequest(BaseModel):
-    text: str = Field(
-        ..., min_length=1, max_length=1000, description="The text to be translated"
-    )
-    target_language: str = Field(
-        ...,
-        min_length=2,
-        max_length=5,
-        description="The target language code (e.g., 'fr' for French)",
-    )
-    source_language: Optional[str] = Field(
-        None,
-        min_length=2,
-        max_length=5,
-        description="The source language code (optional)",
-    )
+    content: str = Field(..., min_length=1, max_length=1000, description="text input to model")
+    role: str = "user"
 
 
-# Pydantic model for translation response
 class TranslationResponse(BaseModel):
-    translated_text: str
-    source_language: Optional[str]
-    target_language: str
+    role: str = "assistant"
+    content: str
+    time_to_generate: float
+    num_generated_tokens: int
+    num_input_tokens: int
 
+    
+
+class LanguageInfo(BaseModel):
+    code: str
+    name: str
+
+
+# Function to get supported languages
+def get_supported_languages() -> List[LanguageInfo]:
+    return [LanguageInfo(code=code, name=name) for code, name in languages.languages.items()]
+
+# Dependency for languages
+async def get_languages():
+    return get_supported_languages()
+
+@app.get("/")
+async def home():
+    tokenizer = TOKENIZER
+    model = MODEL
+    # Format message with the command-r-plus chat template
+    messages = [{"role": "user", "content": "how do I say test in Japanese and French?"}]
+    input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
+
+     # Generate translation
+    logger.info("generating translation")
+    start_time = time.time()
+    logger.info(f"generative model device: {model.device}")
+    gen_tokens = model.generate(
+        input_ids, 
+        max_new_tokens=100, 
+        do_sample=True, 
+        temperature=0.3,
+        )
+
+    gen_text = tokenizer.decode(gen_tokens[0], skip_special_tokens=True)
+    end_time = time.time()
+    logger.info(f"time taken: {str(end_time - start_time)}")
+    logger.info(f"outputs: {str(gen_text)}")
+
+    return {
+        "message": "Welcome to the AYA-35B Translation API. This is a inital translation test. Use the /translate endpoint for text translations.",
+        "testing": "testing model here",
+        "time_taken": str(end_time - start_time),
+        "device": str(model.device),
+        "gen_text": str(gen_text)
+    }
+
+@app.get("/languages")
+async def get_supported_languages_endpoint(supported_languages: List[LanguageInfo] = Depends(get_languages)):
+       return {
+           "message": "Here are the supported 23 languages by Aya 2:",
+           "supported_languages": supported_languages
+       }
 
 @app.post("/translate", response_model=TranslationResponse)
 async def translate_text(request: TranslationRequest):
+    tokenizer = TOKENIZER
+    model = MODEL
+    logger.info(f"received: {request}")
+    try: 
+        model.to(torch.cuda.current_device())
+    except:
+        logger.error(f"Error moving model to cuda device. model device is: {model.device}")
     try:
-        # Prepare input for the model
-        input_text = f"Translate to {request.target_language}: {request.text}"
-        if request.source_language:
-            input_text = f"Translate from {request.source_language} to {request.target_language}: {request.text}"
+        # Prepare input for the model with tokenizer
+        logger.info(f"processing input text: {request.content}")
+        message = [
+            {"role": "user", "content": request.content}
+        ]
+        input_ids = tokenizer.apply_chat_template(message,
+        add_generation_prompt=True,return_tensors="pt")
 
-        # Tokenize input
-        inputs = tokenizer(
-            input_text, return_tensors="pt", max_length=512, truncation=True
-        )
 
         # Generate translation
-        outputs = model.generate(
-            **inputs, max_length=512, num_return_sequences=1, do_sample=True
-        )
+        logger.info("generating translation")
+        logger.info(f"model device: {model.device}")
+        start_time = time.time()
+        gen_tokens = model.generate(
+        input_ids, 
+            max_new_tokens=300, 
+            do_sample=True, 
+            temperature=0.3,
+            )
 
-        # Decode the generated output
-        translated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        gen_text = str(tokenizer.decode(gen_tokens[0]))
+        logger.info(f"generated text: {gen_text}")
+        end_time = time.time()
+        logger.info(f"time taken: {str(end_time - start_time)}")
+        logger.info(f"outputs: {str(gen_text)}")
 
-        logger.info(f"Successfully translated text to {request.target_language}")
+        logger.info(f"Successfully processed text.")
         return TranslationResponse(
-            translated_text=translated_text,
-            source_language=request.source_language,
-            target_language=request.target_language,
+            role="assistant",
+            content=gen_text,
+            time_to_generate=float(end_time - start_time),
+            num_generated_tokens=int(gen_tokens.shape[1]),
+            num_input_tokens=int(input_ids.shape[1])
         )
 
     except Exception as e:
         logger.error(f"Translation error: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="An error occurred during translation"
-        )
-
-
+        raise HTTPException(status_code=500, detail="An error occurred during translation")
+    
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
