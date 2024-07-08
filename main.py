@@ -36,15 +36,14 @@ import uvicorn
 from typing import List
 
 from fastapi import FastAPI, HTTPException, Depends
+from loguru import logger
 from pydantic import BaseModel, Field
-
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from logging_config import logger
 from langcodes import Languages 
+from logging_config import setup_logging
 from model import load_models
 
-from logging_config import setup_logging
 
 setup_logging()
 

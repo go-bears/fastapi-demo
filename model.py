@@ -13,21 +13,21 @@ import torch
 MODEL_NAME = "CohereForAI/aya-23-35b"
 
 
-try:
-    logger.info(f"CUDA availability: {torch.cuda.is_available()}")
-    logger.info(f"CUDA device: {torch.cuda.current_device()}")
-except:
-    logger.error(f"Error checking CUDA availability")
+
 
 
 def load_cuda():
+    device = 'cpu'
     try:
         torch.cuda.is_available()
-        cuda_device = torch.cuda.current_device()
+        device = torch.cuda.current_device()
         logger.info(f"available cuda device: {torch.cuda.current_device()}")
-        return cuda_device
+        return device
     except:
-        logger.info("model loaded on cpu")
+        logger.info("cannot access cuda, model loaded on cpu")
+
+    return device
+
     
 
 def load_models():
@@ -35,15 +35,19 @@ def load_models():
         tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
         model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
         cuda_device = load_cuda()
-        if cuda_device:
+        if torch.cuda.is_available():
+            logger.info(f"CUDA availability: {torch.cuda.is_available()}")
             model = model.to(cuda_device)
+            tokenizer = tokenizer.to(cuda_device)
+            logger.info(f"Successfully loaded {MODEL_NAME} model and tokenizer on {model.device}")
 
-        logger.info(f"Successfully loaded {MODEL_NAME} model and tokenizer")
         return tokenizer, model
     
     except Exception as e:
         logger.error(f"Failed to load {MODEL_NAME} model and tokenizer: {str(e)}")
-        raise
+        model = model.to('cpu')
+        tokenizer = tokenizer.to('cpu')
+        return tokenizer, model
 
 if __name__ == "__main__":
     """Bootstrapped testing by running `python model.py`
@@ -55,6 +59,7 @@ if __name__ == "__main__":
     <|START_OF_TURN_TOKEN|><|USER_TOKEN|>How do you say Hello in Spanish?<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>Hello in Spanish is Hola.
     """
     tokenizer, model = load_models()
+    
     messages = [{"role": "user", "content": "How do you say Hello in Spanish?"}]
     input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
 
@@ -67,4 +72,4 @@ if __name__ == "__main__":
 
     gen_text = tokenizer.decode(gen_tokens[0], skip_special_tokens=True)
     logger.info(gen_text)
-    logger.info("model loaded") 
+    logger.info(f"model loaded on {model.device}") 
