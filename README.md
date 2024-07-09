@@ -1,6 +1,6 @@
 # Aya+fastapi Demo
 
-demo using fastapi to serve translations with Aya 23-35B model.
+demo using fastapi to serve multilingual translations with Aya 23-35B model.
 You can interact with the model using the chat interface or the /translate endpoint. You can review which languages are available for translation in the model at /languages. Logging is also implemented to track the number of tokens generated and the time it took to generate.
 
 This demo is intended as a functional test of Fimio's features.
