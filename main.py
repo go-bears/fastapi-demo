@@ -20,9 +20,20 @@
     - open browser to http://localhost:8080/docs
     - update the request body under 'content'with new text to translate
     press `execute`
+    - for example: 
+        {
+        "content": "how do you say thank you in Spanish, Chinese, and Korean",
+        "role": "user"
+        }
+    - example output: {
+        "role": "assistant",
+        "content": "<|START_OF_TURN_TOKEN|><|USER_TOKEN|>how do you say thank you in Spanish, Chinese, and Korean<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>Thank you in Spanish is \"gracias,\" in Chinese is \"谢谢\" (xìe xiè), and in Korean is \"감사합니다\" (gam-sa-hab-ni-da).",
+        "time_to_generate": 75.68138647079468,
+        "num_generated_tokens": 64,
+        "num_input_tokens": 19
+        }
 
-    Currently known caveats 7/6/2024 (MF):
-    - model is not yet optimized for multi-language translations
+    Currently known caveats 7/7/2024 (MF):
     - model is not yet optimized for long outputs
     - model not yet run on GPU
 
@@ -42,7 +53,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from langcodes import Languages 
 from logging_config import setup_logging
-from model import load_models
+from model import load_models, generate_response
 
 
 setup_logging()
@@ -88,32 +99,19 @@ async def get_languages():
 
 @app.get("/")
 async def home():
+    logger.info("setting up home endpoint. models are loading...")
     tokenizer = TOKENIZER
     model = MODEL
     # Format message with the command-r-plus chat template
+    logger.info("generating initial test translation...")
     messages = [{"role": "user", "content": "how do I say test in Japanese and French?"}]
     input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
-
-     # Generate translation
-    logger.info("generating translation")
-    start_time = time.time()
-    logger.info(f"generative model device: {model.device}")
-    gen_tokens = model.generate(
-        input_ids, 
-        max_new_tokens=100, 
-        do_sample=True, 
-        temperature=0.3,
-        )
-
-    gen_text = tokenizer.decode(gen_tokens[0], skip_special_tokens=True)
-    end_time = time.time()
-    logger.info(f"time taken: {str(end_time - start_time)}")
-    logger.info(f"outputs: {str(gen_text)}")
+    gen_text, num_output_tokens, time_to_generate = generate_response(messages, input_ids, model=model, tokenizer=tokenizer)
 
     return {
         "message": "Welcome to the AYA-35B Translation API. This is a inital translation test. Use the /translate endpoint for text translations.",
         "testing": "testing model here",
-        "time_taken": str(end_time - start_time),
+        "time_taken": str(time_to_generate),
         "device": str(model.device),
         "gen_text": str(gen_text)
     }
@@ -130,48 +128,25 @@ async def translate_text(request: TranslationRequest):
     tokenizer = TOKENIZER
     model = MODEL
     logger.info(f"received: {request}")
-    try: 
-        model = model.to(torch.cuda.current_device())
-        logger.info(f"model is on cuda device: {model.device}")
-    except:
-        logger.error(f"Error moving model to cuda device. model device is: {model.device}")
+
     try:
         # Prepare input for the model with tokenizer
         logger.info(f"processing input text: {request.content}")
-        message = [
+        messages = [
             {"role": "user", "content": request.content}
         ]
-        input_ids = tokenizer.apply_chat_template(message,
-        add_generation_prompt=True,return_tensors="pt")
+        input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
+        gen_text, num_output_tokens, time_to_generate = generate_response(messages, input_ids, model=model, tokenizer=tokenizer)
 
-
-        # Generate translation
-        logger.info("generating translation")
-        logger.info(f"model device: {model.device}")
-        start_time = time.time()
-        
-        gen_tokens = model.generate(
-        input_ids, 
-            max_new_tokens=300, 
-            do_sample=True, 
-            temperature=0.3,
-            )
-
-        gen_text = str(tokenizer.decode(gen_tokens[0]))
-        logger.info(f"generated text: {gen_text}")
-        end_time = time.time()
-        
-        logger.info(f"time taken: {str(end_time - start_time)}")
-        logger.info(f"Successfully processed text.")
-
-
-        return TranslationResponse(
+        response =  TranslationResponse(
             role="assistant",
             content=gen_text,
-            time_to_generate=float(end_time - start_time),
-            num_generated_tokens=int(gen_tokens.shape[1]),
+            time_to_generate=float(time_to_generate),
+            num_generated_tokens=int(num_output_tokens),
             num_input_tokens=int(input_ids.shape[1])
         )
+        logger.info(f"response: {response}")
+        return response
 
     except Exception as e:
         logger.error(f"Translation error: {str(e)}")
