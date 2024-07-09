@@ -32,8 +32,8 @@ def load_cuda():
 
 def load_models():
     try:
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, device_map = 'auto'   )
+        model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, device_map = 'auto')
         cuda_device = load_cuda()
         if torch.cuda.is_available():
             logger.info(f"CUDA availability: {torch.cuda.is_available()}")
@@ -46,7 +46,6 @@ def load_models():
     except Exception as e:
         logger.error(f"Failed to load {MODEL_NAME} model and tokenizer: {str(e)}")
         model = model.to('cpu')
-        tokenizer = tokenizer.to('cpu')
         return tokenizer, model
 
 if __name__ == "__main__":
