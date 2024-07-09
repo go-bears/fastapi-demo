@@ -91,5 +91,5 @@ if __name__ == "__main__":
     messages = [{"role": "user", "content": "How do you say Hello in Spanish?"}]
     input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
 
-    gen_text, num_gen_tokens, time_to_generate = generate_response(messages, input_ids, model)
+    gen_text, num_gen_tokens, time_to_generate = generate_response(messages, input_ids, model, tokenizer)
     print(num_gen_tokens, "---", gen_text, "---", time_to_generate)
