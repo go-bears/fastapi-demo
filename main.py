@@ -136,14 +136,15 @@ async def translate_text(request: TranslationRequest):
             {"role": "user", "content": request.content}
         ]
         input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
+        num_input_tokens = input_ids.shape[1]
         gen_text, num_output_tokens, time_to_generate = generate_response(messages, input_ids, model=model, tokenizer=tokenizer)
 
         response =  TranslationResponse(
             role="assistant",
             content=gen_text,
             time_to_generate=float(time_to_generate),
-            num_generated_tokens=int(num_output_tokens),
-            num_input_tokens=int(input_ids.shape[1])
+            num_generated_tokens=num_output_tokens,
+            num_input_tokens=num_input_tokens
         )
         logger.info(f"response: {response}")
         return response
