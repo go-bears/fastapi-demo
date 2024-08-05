@@ -106,7 +106,7 @@ async def home():
     logger.info("generating initial test translation...")
     messages = [{"role": "user", "content": "how do I say test in Japanese and French?"}]
     input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
-    gen_text, num_output_tokens, time_to_generate = generate_response(messages, input_ids, model=model, tokenizer=tokenizer)
+    gen_text, num_output_tokens, time_to_generate = generate_response(input_ids, model=model, tokenizer=tokenizer)
 
     return {
         "message": "Welcome to the AYA-35B Translation API. This is a inital translation test. Use the /translate endpoint for text translations.",
@@ -137,7 +137,7 @@ async def translate_text(request: TranslationRequest):
         ]
         input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
         num_input_tokens = input_ids.shape[1]
-        gen_text, num_output_tokens, time_to_generate = generate_response(messages, input_ids, model=model, tokenizer=tokenizer)
+        gen_text, num_output_tokens, time_to_generate = generate_response(input_ids, model=model, tokenizer=tokenizer)
 
         response =  TranslationResponse(
             role="assistant",

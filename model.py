@@ -13,10 +13,11 @@ from loguru import logger
 
 
 # Load AYA-35B model and tokenizer
-MODEL_NAME = "CohereForAI/aya-23-35b"
-
+# MODEL_NAME = "CohereForAI/aya-23-35b"
+MODEL_NAME = "CohereForAI/aya-23-8B"
 
 def load_cuda():
+    """Load CUDA if available"""
     device = None
     try:
         logger.info(f"CUDA availability: {torch.cuda.is_available()}")
@@ -31,6 +32,7 @@ def load_cuda():
     
 
 def load_models():
+    """Load model and tokenizer from Hugging Face model hub"""
     device = None
     try:
         device = load_cuda()
@@ -51,12 +53,26 @@ def load_models():
     return tokenizer, model
 
 
-def generate_response(messages, input_ids, model, tokenizer):
+def generate_response(input_ids, model, tokenizer):
+    """Generate response from model
+    
+    Args:
+    - messages (list): list of dictionaries containing the role and content of the message
+    - input_ids (torch.Tensor): tensor of input_ids
+    - model (transformers.PreTrainedModel): model to generate response
+    - tokenizer (transformers.PreTrainedTokenizer): tokenizer to encode and decode text
+    
+    Returns a tuple of:
+    - gen_text (str): generated text
+    - num_gen_tokens (int): number of generated tokens
+    - time_to_generate (float): time taken to generate response
+    """
 
      # Generate translation
     logger.info("generating translation")
     start_time = time.time()
     logger.info(f"generative model device: {model.device}")
+    input_ids = input_ids.to(model.device)
     gen_tokens = model.generate(
         input_ids, 
         max_new_tokens=100, 
@@ -91,5 +107,5 @@ if __name__ == "__main__":
     messages = [{"role": "user", "content": "How do you say Hello in Spanish?"}]
     input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
 
-    gen_text, num_gen_tokens, time_to_generate = generate_response(messages, input_ids, model, tokenizer)
+    gen_text, num_gen_tokens, time_to_generate = generate_response(input_ids, model, tokenizer)
     print(num_gen_tokens, "---", gen_text, "---", time_to_generate)
