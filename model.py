@@ -31,7 +31,7 @@ def load_cuda():
 
     
 
-def load_models():
+def load_models() -> tuple:
     """Load model and tokenizer from Hugging Face model hub"""
     device = None
     try:
@@ -53,7 +53,7 @@ def load_models():
     return tokenizer, model
 
 
-def generate_response(input_ids, model, tokenizer):
+def generate_response(input_ids, model, tokenizer) -> tuple:
     """Generate response from model
     
     Args:

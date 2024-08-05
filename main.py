@@ -113,7 +113,8 @@ async def home():
         "testing": "testing model here",
         "time_taken": str(time_to_generate),
         "device": str(model.device),
-        "gen_text": str(gen_text)
+        "gen_text": str(gen_text),
+        "num_generated_tokens": num_output_tokens
     }
 
 @app.get("/languages")
